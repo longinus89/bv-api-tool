@@ -1,0 +1,171 @@
+const template = require('underscore').template;
+const fs = require('fs');
+const xmlParserSource = require('xml2js').parseString;
+const util = require('util');
+
+const outputDir = './apps/api/src/app/controllers';
+const controllerTemplate = 
+`
+import { ApiRequest } from '../models/api-request.class';
+import { Body, Controller, HttpService, Post } from '@nestjs/common';
+
+@Controller('')
+export class <%= serviceName %>Controller {
+
+  constructor(private http: HttpService) {}
+<% for(const key in functions) { %>
+  @Post()
+  <%= key %>(@Body() request: ApiRequest){
+    return this.http.post('json:8081', {
+      service: '<%= serviceName.toLowerCase() %>',
+      call: '<%= key %>',
+      args: []
+    });
+  }
+<% } %>
+}
+`;
+
+const controllersModuleTemplate = `
+import { Module, HttpModule } from '@nestjs/common';
+
+<% for(const key in functions) { %>
+  import { <%= serviceName %>Controller } from './<%= serviceName.toLowerCase() %>.controller';
+<% } %>
+
+
+
+@Module({
+  imports: [HttpModule],
+  controllers: [
+    <% for(const key in functions) { %>
+      <%= serviceName %>Controller
+    <% } %>
+  ],
+  providers: [AppService]
+})
+export class ControllersModule {}
+
+`;
+
+// <%= functions[key].inputs %>
+
+function runGenerateApi() {
+  const cmdFolder = process.argv[2];
+
+  if (!cmdFolder) {
+    console.log('usage: generate-api CMD_FOLDER. CMD folder relative path is required.');
+    console.log('e.g. node ./scripts/generate-api.js ../cmdaemon/src/autogen/services/');
+    return false;
+  }
+
+  generateApi(cmdFolder);
+}
+
+function generateApi (folder) {
+  const files = fs.readdirSync(folder);
+  if (!files) {
+    console.error("Could not list the directory.", err);
+    process.exit(1);
+  }
+  const servicesNames = files.reduce((aggr, filename) => {
+    const filePath = `${folder}/${filename}`;
+    if (fs.lstatSync(filePath).isFile()) {
+      const sourceData = fs.readFileSync(filePath, 'utf8');
+      const promise = generateApiServiceFile(sourceData)
+      return {
+        ...aggr,
+        promise
+      };
+    }
+    return aggr;
+  }, []);
+
+  Promise.all(servicesNames).then(function(names) {
+    console.log(names);
+  });
+
+  /*var compiled = controllerTemplate(templateFile);
+  const compiledTemplate = compiled({
+    serviceName: filename,
+    functions
+  });
+  createFile(`${outputDir}/${filename.toLowerCase()}.controller.ts`, compiledTemplate);*/
+}
+
+function generateApiServiceFile(sourceData) {
+  return new Promise((resolve, reject) => {
+    try {
+      xmlParserSource(sourceData, function (err, result) {
+        //console.log(result);
+        const parsedData = result.cmservices.cmservice[0];
+        const serviceName = parsedData.$.name;
+        const functions = getFunctions(parsedData);
+  
+        var compiled = template(controllerTemplate);
+        const compiledTemplate = compiled({
+          serviceName,
+          functions
+        });
+        createFile(`${outputDir}/${serviceName.toLowerCase()}.controller.ts`, compiledTemplate);
+              
+        debugObject(compiledTemplate);
+  
+        resolve(serviceName);
+      });
+    } catch (err) {
+      reject(err.message);
+    }
+
+  });
+}
+
+function getFunctions (parsedData) {
+  return parsedData.function.reduce((aggr, entryFunction) => {
+    const nodeonly = entryFunction.$.nodeonly;
+    if (nodeonly && ['true', '1'].includes(nodeonly)) {
+      return aggr;
+    }
+    return {
+      ...aggr,
+      [entryFunction.$.name]: {
+        inputs: entryFunction.in,
+        outputs: entryFunction.out
+      }
+    };
+  }, []);
+}
+
+        /*     { '$':
+        { name: 'removeGroup',
+          call: 'req->getCMDaemon()->getUserManager()->removeGroup(#);',
+          audit: 'true' },
+       token: [ { '$': { name: 'UPDATE_GROUP_TOKEN' } } ],
+       in:
+        [ { '$': { type: 'V', name: 'key' } },
+          { '$': { type: 'I', name: 'force', default: '0' } } ],
+       out:
+        [ { '$': { type: 'B', name: 'success' } },
+          { '$': { type: 'V', name: 'taskId' } },
+          { '$': { type: '$$WillChange', name: 'changes' } } ] },
+*/
+
+function createFile(filePath, data) {
+  fs.writeFile(filePath, data,  function(err) {
+      if (err) {
+          return console.error(err);
+      }
+      console.log(`File ${filePath} created`);
+  });
+}
+
+function debugObject (obj) {
+	console.log(util.inspect(obj, {showHidden: false, depth: null}));
+}
+
+/*module.exports = {
+  xmlDiff: xmlDiff
+};*/
+
+runGenerateApi();
+
