@@ -19,7 +19,7 @@ export class {{capitalize serviceName}}Controller {
   @Post('{{.}}')
   async {{.}}(@Body() request: {{capitalize .}}){
     return await this.apiService.executeApiRequest({
-      ...Object.entries(request),
+      ...request,
       service: '{{toLowerCase ../serviceName}}',
       call: '{{.}}'
     });

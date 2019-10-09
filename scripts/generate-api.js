@@ -83,13 +83,25 @@ function generateModule (controllerNames) {
 function getFunctions (parsedData) {
   return parsedData.function.reduce((aggr, entryFunction) => {
     const nodeonly = entryFunction.$.nodeonly;
+    const forward = entryFunction.$.forward;
     if (nodeonly && ['true', '1'].includes(nodeonly)) {
       return aggr;
     }
+    let functionName = entryFunction.$.name;
+    let inputs = entryFunction.in || [];
+    
+    if (forward) {
+      functionName = `p${functionName}`;
+      inputs = [
+        ...inputs,
+        ...[ { '$': { type: '@V', name: 'uniqueKeys' } }],
+      ]
+    }
+ 
     return {
       ...aggr,
-      [entryFunction.$.name]: {
-        inputs: entryFunction.in || [],
+      [functionName]: {
+        inputs,
         outputs: entryFunction.out || []
       }
     };
